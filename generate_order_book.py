@@ -6,30 +6,20 @@ import queue
 from collections import defaultdict
 
 
-#class Side(enum.Enum):
-#    BUY = 0
-#    SELL = 1
-#
-
-def print_order(order):
-    print(order.timestamp, order.oid, order.action, order.price, order.side, order.qty)
-
-
 class Side(enum.Enum):
-    BUY = 'b'
-    SELL = 'a'
+    BUY = 1
+    SELL = 0
 
 
-# order object
 class Order:
     def __init__(self, timestamp, action, price, side, qty, oid):
         """
-        Class representing a single order
+        Single Order object
         timestamp: time of the order
-        price: price in ticks
-        side: 0=buy, 1=sell
+        price: price
+        side: 1=buy, 0=sell
         qty: order quantity
-        order_id: order ID
+        oid: order id
         """
         self.timestamp = timestamp
         self.action = action
@@ -37,6 +27,7 @@ class Order:
         self.side = side
         self.qty = qty
         self.oid = oid
+
 
 @staticmethod
 def price_doesnt_match(order, price):
@@ -47,10 +38,13 @@ def price_doesnt_match(order, price):
 
 
 class OrderBook():
-    def __init__(self):
+    def __init__(self, price_levels: int, verbose: bool = False):
         '''
         Order book data object for 3Red codetest
         '''
+        self.data = defaultdict(list)
+        self.price_levels = price_levels
+
         self.bids = defaultdict(list)
         self.asks = defaultdict(list)
         self.order_queue = queue.Queue()
@@ -58,6 +52,8 @@ class OrderBook():
         self.ask_prices = []
         self.bid_qtys = []
         self.ask_qtys = []
+
+        self.verbose = verbose
 
     @property
     def best_bid(self):
@@ -74,42 +70,40 @@ class OrderBook():
             return float('inf')
 
     def process_order(self, incoming_order):
-        """ Main order processing function."""
+        """ Main order processing function. Handle order book behavior for add, modify, delete"""
         if incoming_order.action == 'a':
-            print('handle order add')
             if incoming_order.side == Side.BUY:
-                if incoming_order.price >= self.best_ask and self.asks:
-                    self.match_order(incoming_order)
-                else:
-                    self.bids[incoming_order.price].append(incoming_order)
+                self.bids[incoming_order.price].append(incoming_order)
             else:
-                if incoming_order.price <= self.best_bid and self.bids:
-                    self.match_order(incoming_order)
-                else:
-                    self.asks[incoming_order.price].append(incoming_order)
+                self.asks[incoming_order.price].append(incoming_order)
+            self.output_order(incoming_order)
 
         elif incoming_order.action == 'm':
-                print('handle order modify')
+        # TODO(andrew): Respect order_modify rules. should rule move to front of queue if px level changes / if quantity changes?
                 if incoming_order.side == Side.BUY:
                     for i, existing_order in enumerate(self.bids[incoming_order.price]):
                         if existing_order.oid == incoming_order.oid:
-                            print(f'modifying oid {existing_order.oid}')
-#                            print(f'existing_order: timestamp:{existing_order.timestamp} - action:{existing_order.action} - price:{existing_order.price} - side:{existing_order.side} - qty:{existing_order.qty}')
-#                            print(f'modified_order: timestamp:{incoming_order.timestamp} - action:{incoming_order.action} - price:{incoming_order.price} - side:{incoming_order.side} - qty:{incoming_order.qty}')
+                            if self.verbose:
+                                print(f'modifying oid {existing_order.oid}')
+                                print(f'existing_order: timestamp:{existing_order.timestamp} - action:{existing_order.action} - price:{existing_order.price} - side:{existing_order.side} - qty:{existing_order.qty}')
+                                print(f'modified_order: timestamp:{incoming_order.timestamp} - action:{incoming_order.action} - price:{incoming_order.price} - side:{incoming_order.side} - qty:{incoming_order.qty}')
                             self.bids[incoming_order.price][i] = incoming_order
+                            self.output_order(incoming_order)
                             break
                 else:
                     for i, existing_order in enumerate(self.asks[incoming_order.price]):
                         if existing_order.oid == incoming_order.oid:
-                            print(f'modifying oid {existing_order.oid}')
-#                            print(f'existing_order: timestamp:{existing_order.timestamp} - action:{existing_order.action} - price:{existing_order.price} - side:{existing_order.side} - qty:{existing_order.qty}')
-#                            print(f'modified_order: timestamp:{incoming_order.timestamp} - action:{incoming_order.action} - price:{incoming_order.price} - side:{incoming_order.side} - qty:{incoming_order.qty}')
+                            if self.verbose:
+                                print(f'modifying oid {existing_order.oid}')
+                                print(f'existing_order: timestamp:{existing_order.timestamp} - action:{existing_order.action} - price:{existing_order.price} - side:{existing_order.side} - qty:{existing_order.qty}')
+                                print(f'modified_order: timestamp:{incoming_order.timestamp} - action:{incoming_order.action} - price:{incoming_order.price} - side:{incoming_order.side} - qty:{incoming_order.qty}')
                             self.asks[incoming_order.price][i] = incoming_order
+                            self.output_order(incoming_order)
                             break
 
         elif incoming_order.action == 'd':
-            print('handle order delete')
-#            print(f'delete oid {incoming_order.oid} from px level {incoming_order.price}')
+            if self.verbose:
+                print(f'delete oid {incoming_order.oid} from px level {incoming_order.price}')
             if incoming_order.side == Side.BUY:  # remove order from px_level
                 self.bids[incoming_order.price] = [o for o in self.bids[incoming_order.price] if o.oid != incoming_order.oid]
                 if len(self.bids[incoming_order.price]) == 0:
@@ -118,47 +112,47 @@ class OrderBook():
                 self.asks[incoming_order.price] = [o for o in self.asks[incoming_order.price] if o.oid != incoming_order.oid]
                 if len(self.asks[incoming_order.price]) == 0:
                     self.asks.pop(incoming_order.price)
-
+            self.output_order(incoming_order)
         else:
             print('not a valid action type')
             return
 
-    def match_order(self, incoming_order):
-        """ Match an incoming order against orders on the other side of the book, in price-time priority."""
-        # get the prices to match incoming_order against
-        print('matching order')
-        levels = self.bids if incoming_order.side == Side.SELL else self.offers
-        reverse_px_list = True if incoming_order.side == Side.SELL else False
-        prices = sorted(levels.keys(), reverse=reverse_px_list)
-
-        # iterate over the prices to match the incoming order
-        for (i, price) in enumerate(prices):
-            if (incoming_order.qty == 0) or (price_doesnt_match(incoming_order, price)):
-                break
-            orders_at_level = levels[price]
-            for (j, book_order) in enumerate(orders_at_level):
-                if incoming_order.qty == 0:
-                    break
-                trade = self.execute_match(incoming_order, book_order)
-                incoming_order.qty = max(0, incoming_order.qty - trade.qty)
-                book_order.qty = max(0, book_order.qty - trade.qty)
-                self.trades.put(trade)
-            levels[price] = [o for o in orders_at_level if o.qty > 0]
-            if len(levels[price]) == 0:
-                levels.pop(price)
-        # If the incoming order has not been completely matched, add the remainder to the order book
-        if incoming_order.qty > 0:
-            same_side = self.bids if incoming_order.side == Side.BUY else self.offers
-            same_side[incoming_order.price].append(incoming_order)
-
-    def book_summary(self):
+    def output_order(self, incoming_order):
+        '''
+        Create a view of the current order book with every given order update
+        this will eventually be the final dataframe / csv of the order book
+        '''
         self.bid_prices = sorted(self.bids.keys(), reverse=True)
         self.ask_prices = sorted(self.asks.keys())
-        self.bid_sizes = [sum(o.qty for o in self.bids[p]) for p in self.bid_prices]
-        self.ask_sizes = [sum(o.qty for o in self.asks[p]) for p in self.ask_prices]
+        self.bid_qtys = [sum(o.qty for o in self.bids[p]) for p in self.bid_prices]
+        self.ask_qtys = [sum(o.qty for o in self.asks[p]) for p in self.ask_prices]
+
+        self.data['timestamp'].append(incoming_order.timestamp)
+        self.data['oid'].append(incoming_order.oid)
+        self.data['action'].append(incoming_order.action)
+        self.data['price'].append(incoming_order.price)
+        self.data['side'].append(incoming_order.side.value)
+        self.data['qty'].append(incoming_order.qty)
+
+        # establish best bid price levels. two separate loops for column organization
+        for lvl in reversed(range(self.price_levels)):
+            if lvl == 0:
+                self.data['bq0'].append(self.bid_qtys[0] if self.bid_qtys else 0)
+                self.data['bp0'].append(self.best_bid)
+            else:
+                self.data[f'bq{lvl}'].append(self.bid_qtys[lvl] if len(self.bid_qtys) > lvl else 0)
+                self.data[f'bp{lvl}'].append(self.bid_prices[lvl] if len(self.bid_prices) > lvl else np.nan)
+
+        # establish ask price levels
+        for lvl in range(self.price_levels):
+            if lvl == 0:
+                self.data['ap0'].append(self.best_ask)
+                self.data['aq0'].append(self.ask_qtys[0] if self.ask_qtys else 0)
+            else:
+                self.data[f'ap{lvl}'].append(self.ask_prices[lvl] if len(self.ask_prices) > lvl else np.nan)
+                self.data[f'aq{lvl}'].append(self.ask_qtys[lvl] if len(self.ask_qtys) > lvl else 0)
 
     def show_book(self):
-        self.book_summary()
         print('Sell side:')
         if len(self.ask_prices) == 0:
             print('EMPTY')
@@ -171,41 +165,33 @@ class OrderBook():
             print('{0}) Price={1}, Total units={2}'.format(i+1, self.bid_prices[i], self.bid_sizes[i]))
         print()
 
-#    def build_book(self):
-#        self.book_summary()
-#        dfs = []
-#        df_order = pd.DataFrame(index=[0], columns=['timestamp', 'price', 'side', 'bq1', 'bp1', 'bq0', 'bp0', 'ap0', 'aq0', 'ap1', 'aq1'])
-#        # build sell side
-#        if len(self.ask_prices) > 0:
-#
-#
-#        for i, price in reversed(list(enumerate(self.ask_prices))):
-#            print('{0}) Price={1}, Total units={2}'.format(i+1, self.ask_prices[i], self.ask_sizes[i]))
-#        print('Buy side:')
-#        if len(self.bid_prices) == 0:
-#            print('EMPTY')
-#        for i, price in enumerate(self.bid_prices):
-#            print('{0}) Price={1}, Total units={2}'.format(i+1, self.bid_prices[i], self.bid_sizes[i]))
-#        print()
+    def build_book_df(self):
+        df = pd.DataFrame.from_dict(self.data, orient="index").T
+        return df
 
+
+def print_order(order):
+    print(order.timestamp, order.oid, order.action, order.price, order.side, order.qty)
 
 
 if __name__ == '__main__':
-    df = pd.read_csv("C:/Users/Andrew/Downloads/3rqtest/codetest/res_20190610.csv")
+    df_in = pd.read_csv("C:/Users/Andrew/Downloads/3rqtest/codetest/res_20190610.csv")
     # testing
-#    df = df.head(10000)
-    ob = OrderBook()
+#    df_in = df_in.head(1000)
 
-    for i in range(len(df)):
-        timestamp = df['timestamp'][i]
-        side = Side(df['side'][i])
-        action = df['action'][i]
-        oid = df['id'][i]
-        price = df['price'][i]
-        qty = df['quantity'][i]
+    ob = OrderBook(price_levels=5, verbose=False)
+    for i in range(len(df_in)):
+        timestamp = df_in['timestamp'][i]
+        side =  Side(1) if (df_in['side'][i]) == 'b' else Side(0)
+        action = df_in['action'][i]
+        oid = df_in['id'][i]
+        price = df_in['price'][i]
+        qty = df_in['quantity'][i]
 
         new_order = Order(timestamp, action, price, side, qty, oid)
         ob.order_queue.put(new_order)
         while not ob.order_queue.empty():
             ob.process_order(ob.order_queue.get())
+
+        df_out = ob.build_book_df()
 
