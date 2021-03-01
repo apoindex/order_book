@@ -166,14 +166,14 @@ def print_order(order):
 if __name__ == '__main__':
     t_start = time.time()
 
-    put_data = False
+    put_data = True
     for date in ['20190610', '20190611', '20190612', '20190613', '20190614']:
         t_in = time.time()
-        df_in = pd.read_csv(f"C:/Users/Andrew/Downloads/3rqtest/codetest/res_{date}.csv")
-        print(f'Starting  {date} building order_book data for len(df_in) orders')
+        df_in = pd.read_csv(f"res_{date}.csv")
+        print(f'Starting {date} building order_book data for {len(df_in)} orders')
 
         ob = OrderBook(price_levels=5, verbose=False)
-        for i in range(len(df_in)):  # this is slooow, but not sure how else to process each order
+        for i in range(len(df_in)):
             timestamp = df_in['timestamp'][i]
             side =  Side(1) if (df_in['side'][i]) == 'b' else Side(0)
             action = df_in['action'][i]
@@ -189,10 +189,10 @@ if __name__ == '__main__':
         t_out = time.time()
         df_out = ob.build_book_df()
         job_length = round((t_out - t_in) / 60, 2)
-        print(f'Finished {date}, len(df_out) orders in {job_length} minutes')
+        print(f'Finished {date}, {len(df_out)} orders in {job_length} minutes')
         if put_data:
             #TODO(andrew): fix file path for portability
-            df_out.to_csv(os.path.join(rf"C:\Users\Andrew\Documents\Python Scripts\order_book\data\output_{date}.csv"), index=False)
+            df_out.to_csv(os.path.join(rf"output_{date}.csv"), index=False)
 
     t_end = time.time()
     print(f'total job length: {round((t_end - t_start) / 60)} minutes')
