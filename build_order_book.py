@@ -166,7 +166,7 @@ def print_order(order):
 if __name__ == '__main__':
     t_start = time.time()
 
-    put_data = True
+    put_data = False
     for date in ['20190610', '20190611', '20190612', '20190613', '20190614']:
         t_in = time.time()
         df_in = pd.read_csv(f"C:/Users/Andrew/Downloads/3rqtest/codetest/res_{date}.csv")
