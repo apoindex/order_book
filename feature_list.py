@@ -16,7 +16,7 @@ def calculate_rolling_oside(df, window=100):
     df_temp['rolling_sells'] = df_temp['sells'].rolling(window).sum()
     df_temp[f'{window}_period_oside_ratio'] = df_temp['rolling_buys'] / df_temp['rolling_sells']
 
-    df[f'{window}_period_oside_ratio'] = df_temp[f'{window}_period_oside_ratio']
+    df[f'feature_oratio{window}'] = df_temp[f'{window}_period_oside_ratio']
     return df
 
 
@@ -31,7 +31,7 @@ def calculate_qty_ratio(df, levels=1):
     df[f'top{levels}_ask_qty'] = df[aq_cols].sum(axis=1)
     df[f'top{levels}_bid_qty'] = df[bq_cols].sum(axis=1)
 
-    df[f'qty_ratio{levels}'] = df[f'top{levels}_bid_qty'] / df[f'top{levels}_ask_qty']
+    df[f'feature_qty_ratio{levels}'] = df[f'top{levels}_bid_qty'] / df[f'top{levels}_ask_qty']
     return df
 
 
@@ -40,15 +40,7 @@ def calculate_inside_spread(df):
     Calculate book-spread at each order event. Nan until orders are present on both sides
     '''
 
-    df['inside_spread'] = np.where((df['aq0'] > 0) & (df['bq0'] > 0), df['ap0'] - df['bp0'], np.nan)
-    return df
-
-
-def calculate_hour(df):
-    '''
-    Converts timestamp to hour. Assumes timestamp to be in millisecond format
-    '''
-    df['h'] = round(df['timestamp'] / 3.6e6, -1)
+    df['feature_inside_spread'] = np.where((df['aq0'] > 0) & (df['bq0'] > 0), df['ap0'] - df['bp0'], np.nan)
     return df
 
 #def calculate_add_more_aggressive_px(df):
@@ -118,7 +110,9 @@ def calculate_price_delta(df, window=100):
 
         result_vec[i] = result
 
-    df[f'px_delta{window}'] = result_vec
+    df[f'target_px_delta{window}'] = result_vec
+    # fill nans with zero
+    df[f'target_px_delta{window}'] = df[f'target_px_delta{window}'].fillna(0)
     return df
 
 
