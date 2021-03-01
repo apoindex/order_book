@@ -10,15 +10,16 @@ from sklearn import linear_model
 from sklearn.linear_model import Lasso, lasso_path
 import matplotlib.pyplot as plt
 
+
 class DataModelBuilder():
     def __init__(self, verbose=False):
         self.verbose = verbose
         self.available_dates_list = ['20190610', '20190611', '20190612', '20190613', '20190614']
 
     def _get_input_data(self, date):
-        df = pd.read_csv(f"C:/Users/Andrew/Documents/Python Scripts/order_book/data/output_{date}.csv")
+        df = pd.read_csv(f"output_{date}.csv")
         if df is None:
-            print(f'Error: No data for {date}')
+            print(f'Error: No data for {date} -- run build_order_book.py for {date}')
             return
 
         # add some extra columns
@@ -30,8 +31,12 @@ class DataModelBuilder():
         df = feature_list.calculate_rolling_oside(df, window=100)
         df = feature_list.calculate_qty_ratio(df, levels=1)
         df = feature_list.calculate_inside_spread(df)
+        df = feature_list.calculate_px_change(df)
+        df = feature_list.calculate_vwap(df)
+        df = feature_list.calculate_price_std(df)
 
         # calculate prediction target
+        # choosing a simple alpha calculation for the prediction target
         df = feature_list.calculate_price_delta(df, window=100)
         return df
 
@@ -66,7 +71,8 @@ class DataModelBuilder():
         # train model
         X = df_trn[feature_cols]
         y = df_trn[target_col]
-        model = Lasso(alpha=1.0,
+        # choosing alpha of 0.05 to reduce bias towards single feature
+        model = Lasso(alpha=.05,
                       fit_intercept=True,
                       normalize=False,
                       max_iter=1000,
@@ -83,14 +89,13 @@ class DataModelBuilder():
         print(f'total features: {X.shape[1]}')
         print(f'selected features: {coef_dict.keys()}\n')
         print(coef_df)
+
         # score model manually assuming no interactions and no categorical features
         df['predicted'] = 0
         for feature, coefficient in coef_dict.items():
             df['predicted'] += df[feature] * coefficient
 
         df['predicted'] = df['predicted'] + intercept
-
-
         return df
 
     def run(self, date):
@@ -108,7 +113,11 @@ class DataModelBuilder():
 
 if __name__ == '__main__':
     dmb = DataModelBuilder()
-    date = '20190611'
+    # holding out 20190610 for a train_date
+    oosample_dates = ['20190611', '20190612', '20190613', '20190614']
+
+    # select a target date to make predictions on
+    date = '20190613'
     df = dmb.run(date=date)
 
     df.predicted.plot(figsize=(12,5), title=f'Predictions for {date}')
